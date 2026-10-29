@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mini Games Offline - Dopamine Rush</title>
+<style>
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    background: #111;
+    color: #eee;
+    margin: 0;
+    padding: 20px;
+    text-align: center;
+  }
+  h1 { color: #f0e6d0; }
+  .menu button {
+    background: #c83b2e;
+    color: white;
+    border: none;
+    padding: 15px 30px;
+    margin: 10px;
+    font-size: 18px;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  .menu button:hover { background: #a02e23; }
+  #game-area { margin-top: 20px; }
+  canvas { background: #222; border-radius: 8px; max-width: 100%; }
+  .score { font-size: 24px; margin: 10px; color: #e0b15c; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<h1>Mini Games Offline (Tanpa Server)</h1>
+<p>Bisa dimainkan langsung di browser. Cocok untuk GitHub Pages. Tidak perlu server.</p>
+
+<div class="menu" id="menu">
+  <button onclick="startGame('2048')">2048</button>
+  <button onclick="startGame('snake')">Snake</button>
+  <button onclick="startGame('flappy')">Flappy</button>
+</div>
+
+<div id="game-area" class="hidden">
+  <div class="score" id="score">Score: 0</div>
+  <canvas id="canvas" width="400" height="400"></canvas>
+  <br>
+  <button onclick="backToMenu()">Kembali ke Menu</button>
+</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const scoreEl = document.getElementById('score');
+let currentGame = null;
+let gameLoop = null;
+let score = 0;
+
+function backToMenu() {
+  if (gameLoop) cancelAnimationFrame(gameLoop);
+  document.getElementById('menu').classList.remove('hidden');
+  document.getElementById('game-area').classList.add('hidden');
+  currentGame = null;
+}
+
+function startGame(type) {
+  document.getElementById('menu').classList.add('hidden');
+  document.getElementById('game-area').classList.remove('hidden');
+  score = 0;
+  updateScore();
+  if (type === '2048') init2048();
+  else if (type === 'snake') initSnake();
+  else if (type === 'flappy') initFlappy();
+}
+
+function updateScore() {
+  scoreEl.textContent = 'Score: ' + score;
+}
+
+// ========== 2048 ==========
+let grid, size = 4;
+function init2048() {
+  currentGame = '2048';
+  canvas.width = 400;
+  canvas.height = 400;
+  grid = Array(size).fill().map(() => Array(size).fill(0));
+  addTile(); addTile();
+  draw2048();
+  document.onkeydown = handle2048;
+}
+
+function addTile() {
+  let empty = [];
+  for (let r = 0; r < size; r++)
+    for (let c = 0; c < size; c++)
+      if (grid[r][c] === 0) empty.push([r, c]);
+  if (empty.length === 0) return;
+  let [r, c] = empty[Math.floor(Math.random() * empty.length)];
+  grid[r][c] = Math.random() < 0.9 ? 2 : 4;
+}
+
+function draw2048() {
+  ctx.fillStyle = '#161910';
+  ctx.fillRect(0, 0, 400, 400);
+  const tile = 90;
+  const pad = 10;
+  for (let r = 0; r < size; r++) {
+    for (let c = 0; c < size; c++) {
+      const x = pad + c * (tile + pad);
+      const y = pad + r * (tile + pad);
+      const val = grid[r][c];
+      ctx.fillStyle = val ? '#e0b15c' : '#333';
+      ctx.fillRect(x, y, tile, tile);
+      if (val) {
+        ctx.fillStyle = '#161910';
+        ctx.font = 'bold 28px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(val, x + tile/2, y + tile/2);
+      }
+    }
+  }
+}
+
+function handle2048(e) {
+  if (currentGame !== '2048') return;
+  let moved = false;
+  if (e.key === 'ArrowLeft') moved = moveLeft();
+  else if (e.key === 'ArrowRight') moved = moveRight();
+  else if (e.key === 'ArrowUp') moved = moveUp();
+  else if (e.key === 'ArrowDown') moved = moveDown();
+  if (moved) {
+    addTile();
+    draw2048();
+    score += 10;
+    updateScore();
+  }
+}
+
+function moveLeft() {
+  let moved = false;
+  for (let r = 0; r < size; r++) {
+    let row = grid[r].filter(v => v);
+    for (let i = 0; i < row.length - 1; i++) {
+      if (row[i] === row[i+1]) {
+        row[i] *= 2;
+        score += row[i];
+        row.splice(i+1, 1);
+        moved = true;
+      }
+    }
+    while (row.length < size) row.push(0);
+    if (row.join() !== grid[r].join()) moved = true;
+    grid[r] = row;
+  }
+  return moved;
+}
+function moveRight() {
+  grid.forEach(row => row.reverse());
+  let m = moveLeft();
+  grid.forEach(row => row.reverse());
+  return m;
+}
+function moveUp() {
+  transpose();
+  let m = moveLeft();
+  transpose();
+  return m;
+}
+function moveDown() {
+  transpose();
+  let m = moveRight();
+  transpose();
+  return m;
+}
+function transpose() {
+  grid = grid[0].map((_, c) => grid.map(row => row[c]));
+}
+
+// ========== Snake ==========
+let snake, dir, food, snakeTimer;
+function initSnake() {
+  currentGame = 'snake';
+  canvas.width = 400;
+  canvas.height = 400;
+  snake = [[10, 10]];
+  dir = [1, 0];
+  food = [15, 15];
+  document.onkeydown = (e) => {
+    if (e.key === 'ArrowUp' && dir[1] !== 1) dir = [0, -1];
+    if (e.key === 'ArrowDown' && dir[1] !== -1) dir = [0, 1];
+    if (e.key === 'ArrowLeft' && dir[0] !== 1) dir = [-1, 0];
+    if (e.key === 'ArrowRight' && dir[0] !== -1) dir = [1, 0];
+  };
+  if (snakeTimer) clearInterval(snakeTimer);
+  snakeTimer = setInterval(updateSnake, 120);
+  drawSnake();
+}
+
+function updateSnake() {
+  if (currentGame !== 'snake') return;
+  const head = [snake[0][0] + dir[0], snake[0][1] + dir[1]];
+  if (head[0] < 0 || head[0] >= 20 || head[1] < 0 || head[1] >= 20 || snake.some(s => s[0] === head[0] && s[1] === head[1])) {
+    clearInterval(snakeTimer);
+    alert('Game Over! Score: ' + score);
+    return;
+  }
+  snake.unshift(head);
+  if (head[0] === food[0] && head[1] === food[1]) {
+    score += 10;
+    updateScore();
+    food = [Math.floor(Math.random()*20), Math.floor(Math.random()*20)];
+  } else {
+    snake.pop();
+  }
+  drawSnake();
+}
+
+function drawSnake() {
+  ctx.fillStyle = '#111';
+  ctx.fillRect(0, 0, 400, 400);
+  ctx.fillStyle = '#c83b2e';
+  snake.forEach(([x, y]) => ctx.fillRect(x*20, y*20, 18, 18));
+  ctx.fillStyle = '#e0b15c';
+  ctx.fillRect(food[0]*20, food[1]*20, 18, 18);
+}
+
+// ========== Flappy-like ==========
+let birdY, birdV, pipes, flappyLoop;
+function initFlappy() {
+  currentGame = 'flappy';
+  canvas.width = 400;
+  canvas.height = 400;
+  birdY = 200;
+  birdV = 0;
+  pipes = [{x: 400, gap: 150}];
+  document.onkeydown = () => { if (currentGame === 'flappy') birdV = -7; };
+  canvas.onclick = () => { if (currentGame === 'flappy') birdV = -7; };
+  if (flappyLoop) cancelAnimationFrame(flappyLoop);
+  loopFlappy();
+}
+
+function loopFlappy() {
+  if (currentGame !== 'flappy') return;
+  birdV += 0.4;
+  birdY += birdV;
+  pipes.forEach(p => p.x -= 3);
+  if (pipes[pipes.length-1].x < 250) pipes.push({x: 400, gap: 120 + Math.random()*100});
+  if (pipes[0].x < -60) pipes.shift();
+  // collision
+  if (birdY > 380 || birdY < 0 || pipes.some(p => p.x < 80 && p.x > 20 && (birdY < p.gap-40 || birdY > p.gap+40))) {
+    alert('Game Over! Score: ' + score);
+    currentGame = null;
+    return;
+  }
+  score += 0.1;
+  updateScore();
+  drawFlappy();
+  flappyLoop = requestAnimationFrame(loopFlappy);
+}
+
+function drawFlappy() {
+  ctx.fillStyle = '#87ceeb';
+  ctx.fillRect(0, 0, 400, 400);
+  ctx.fillStyle = '#e0b15c';
+  ctx.fillRect(40, birdY, 30, 20);
+  ctx.fillStyle = '#c83b2e';
+  pipes.forEach(p => {
+    ctx.fillRect(p.x, 0, 50, p.gap - 50);
+    ctx.fillRect(p.x, p.gap + 50, 50, 400);
+  });
+}
+</script>
+</body>
+</html>
